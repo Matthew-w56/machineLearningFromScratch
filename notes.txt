@@ -1,0 +1,38 @@
+Author: Matthew Williams
+--------------------------------------------------[ Introduction ]------------------------------------------------------
+
+Notes on the projects as they went
+The purpose is to have a record of the different algorithms I used, and the various optimizations that I
+discovered or learned about, then applied to the models.
+
+--------------------------------------------[ Simple Linear Regression ]------------------------------------------------
+
+-Adagrad:
+    When I first made the model, one of my problems that I ran into and couldn't figure out for a time was that
+  if the learning rate wasn't within a very small range (that was different for each data set), the whole thing
+  would spiral and crash and burn and I didn't know why.  Well I researched techniques for learning rates, and
+  how professional models did it, and the algorithm I found, described by a Cornell professor who posted videos
+  of his lectures to Youtube, was Adagrad.  The general idea is that each time you calculate the gradient, you
+  add it's square to a running tally called S, and each time you apply the gradient, you divide it by the square
+  root of S plus a tiny number Epsilon.  The epsilon is to keep you from running into a divide-by-zero problem.
+    When I added it to this model, it worked amazing, and all my other models use this technique to regulate
+  their learning rates, so none of them have a learning rate as a parameter.
+
+-------------------------------------------[ Multiple Linear Regression ]-----------------------------------------------
+
+-Adagrad (See Simple Linear Regression)
+
+-Changed from Squeezing X Columns to Reshaping:
+    When attempting to use this class for a Simple Linear Regression problem, it broke because using np.squeeze()
+  turns what was expected to be a 2-d matrix of inputs into a 1-d array of inputs, which made the gradient turn
+  from the dot product of two 1-d arrays (a scalar) into the product of an array and a scalar (a 1-d array).  So I
+  changed all the Multiple models, replacing the squeeze() method when I cut the X matrix into columns in favor of
+  using np.reshape(feature_count, data_point_count).
+
+-------------------------------------------[ Binary Logistic Regression ]-----------------------------------------------
+
+-Adagrad (See Simple Linear Regression)
+
+------------------------------------------[ Multinomial Logistic Regression ]-------------------------------------------
+
+-Adagrad (See Simple Linear Regression)
