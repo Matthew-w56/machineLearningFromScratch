@@ -1,206 +1,54 @@
+# Author: Matthew Williams
+
 import numpy as np
-import math
+from util import optimizers
 
 
-class BinaryLogisticRegression:
-    """Basic class for Logistic Regression. Accepts one input feature X, and classifies it as 1 or 0
-
-    >For multiple inputs and binary output, see MultipleBinaryLogisticRegression
-    >For multiple inputs and multiple classes, see MultinomialLogisticRegression"""
-
-    def __init__(self, epsilon=0.00001, min_gradient=0.0004, init_m=0, init_b=0, headers=None, threshold=0.5):
-        """Initializes the Regression Model.  It takes in one feature set, and predicts each as 1 or 0
-
-
-        Parameters
-
-        -epsilon: float.  Value added to S before square rooting it during the gradient application
-		(Adagrad technique)
-
-		-min_gradient: float.  Defines the minimum magnitude of gradient that will still be
-		applied before stopping the training process
-
-		-init_m: numerical.  Initial value of the weight, default is zero
-
-		-init_b: numerical.  Initial value of the bias, default is zero
-
-		-headers: array of len = 2, String.  Preferred names of the weight and bias respectively (b = [1])
-		default is ['m', 'b']
-
-		-threshold: float in range (0, 1) exclusive.  Level at which a data point's score after the sigmoid
-		transformation must be in order to be classified as '1'.  Default is a neutral 0.5
-        """
-
-        # Instantiate base variables
-        self.m = init_m
-        self.b = init_b
-        self.s = np.array([0.0, 0.0])
-
-        # Instantiate headers variable
-        if headers is None:
-            # If no headers is specified, use default values
-            self.headers = ['m', 'b']
+def cast_to_one_hot(y):
+    """The goal is that any input for class (integer class codes or one-hot encodings) is returned as a one-hot.
+    Returns the input if that is already the case, and returns a converted representation if needed."""
+    
+    # If the first element of y is not iterable
+    if not hasattr(y[0], '__iter__'):
+        # If the list is (presumably, given the first element) comprised of numbers (class codes)
+        try:
+            # Test to see if it will let me cast y's elements to ints
+            y = y.astype(int)
+            # Record the maximum index needed to cover y's class codes
+            max_index = max(y) + 1
+            # Instantiate a blank list of 0's (What will become the one-hot
+            final_list = np.zeros((len(y), max_index))
+            # Loop through each row, and set the class code's column to 1
+            for y_i,list_r in zip(y, final_list):
+                final_list[y_i] = 1
+            # Return the integer-casted one-hot representation
+            return final_list.astype(int)
+        except ValueError:
+            raise Exception(f'Class codes (values in y) must be Integers!  {type(y[0])} won\'t work!')
+    # If the first element in y is iterable, it is assumed that it is a valid class code array
+    else:
+        # If the array follows general, weakly checked conditions of a valid one-hot encoding
+        if np.sum(y) == len(y) and np.max(y) == 1:
+            # Simply return the input
+            return y
+        # Else, if the input is iterable but not a valid one-hot
         else:
-            if len(headers) == 2:
-                # If input is a valid length and is usable as headers, store them
-                self.headers = headers
-            else:
-                # Input is an invalid length, use default values instead
-                print('Header list must be 2!  Using default values instead')
-                self.headers = ['m', 'b']
-
-        # Instantiate Hyperparameters
-        self.min_gradient = min_gradient
-        self.threshold = threshold
-        self.epsilon = epsilon
-
-    def train(self, x, y, prints=True):
-        """Trains the model to the given data by iterating gradient descent
+            # Raise an exception and tell why
+            raise Exception('Input Y has iterable elements, but is not a valid one-hot encoding!')
 
 
-		Parameters
-
-		-x: 1-dimensional array of inputs (numerical)
-
-		-y: 1-dimensional array of labels (binary)
-
-		-prints: Boolean.  Dictates whether this model will print the results at the end of the training process
-		"""
-
-        # Update weights the complete number of times
-        while True:
-            y_hat = self.predict_all(x)
-            g = self.__update_weights(x, y, y_hat)
-            if g <= self.min_gradient:
-                break
-
-        print('Shape of y_hat:', y_hat.shape)
-        print('Shape of X:', x.shape)
-        print('Shape of Y:', y.shape)
-        print('Last G:', g)
-        print('Shape of Gradient: (2)')
-
-        # Calculate accuracy
-        accuracy = self.__calculate_accuracy(y_hat, y)
-
-        if prints:
-            # Print results
-            print('Training done!')
-            print(('Final accuracy: %.2f' % (accuracy * 100)) + '%')
-            print('Items in training data set:', len(y))
-            print(self.headers[0] + ':', self.m)
-            print(self.headers[1] + ':', self.b)
-
-    def evaluate(self, x, y, prints=True):
-        """Evaluates accuracy of the model
-
-
-        Parameters
-
-		-x: 1-dimensional array of inputs (numerical)
-
-		-y: 1-dimensional array of labels (binary)
-
-		-prints: Boolean.  Dictates whether this model will print the results at the end of the training process
-		"""
-
-        # Create list of guesses, and calculate accuracy from it
-        y_hat = self.predict_all(x)
-        accuracy = self.__calculate_accuracy(y_hat, y)
-
-        # Print results
-        if prints:
-            print('\n\nEvaluation results:')
-            print(('Accuracy: %.2f' % (accuracy * 100)) + '%')
-            print('Items in evaluation data set:', len(y))
-
-    def predict_all(self, x):
-        """Assembles a prediction list from the sigmoid of the model's prediction
-
-        Parameters
-
-        -x: 1-dimensional array of inputs (numerical)
-        """
-
-        return 1 / (1 + np.exp(- (x * self.m + self.b)))
-
-    def get_changing_point(self):
-        """Returns the input point at which the prediction shifts from 0 to 1
-
-        Formula can be attained from writing out the sigmoid, solving for z,
-        and solving for where mx + b is equal to z given model m and b
-
-        Returns:
-        Value of X that serves as a partition between the inputs that the model
-        would classify as '0', and the ones it would classify as '1'
-        """
-
-        # Set z equal to the inverse of sigmoid which is ln( (1-x) / x )
-        z = -( math.log( (1.0-self.threshold) / self.threshold ) )
-        # Steps backwards through y = mx + b by removing b (solve for x now)
-        x = z - self.b
-        # Takes next step by removing m
-        x /= self.m
-
-        # Return final answer, which is the number
-        return x
-
-    def __calculate_accuracy(self, y_hat, y):
-        """Counts the number of times that the final guess of the model matches the label"""
-
-        # Create an array of final guesses (with threshold applied)
-        guesses = np.where(y_hat >= self.threshold, 1, 0)
-
-        # Create an array of collisions between the guess and the label, and store it's length
-        correct = len(np.where(guesses == y)[0])
-
-        # Store the total number of data points given
-        total = len(y)
-
-        # Return the ratio of correct to total
-        return correct / total
-
-    def __update_weights(self, x, y, y_hat):
-        """Calculates a gradient for the weights and applies it"""
-
-        # Calculate differences between guesses and labels
-        diff = y_hat - y
-
-        # Instantiate gradient variable
-        gradient = np.array([0.0, 0.0])
-
-        # Calculate gradient
-        gradient[0] = np.dot(x, diff) / len(x)
-        gradient[1] = np.sum(diff) / len(x)
-
-        # Calculate and apply the S factor (ADAGRAD)
-        self.s += gradient * gradient
-        gradient /= np.sqrt(self.s + self.epsilon)
-
-        # Apply gradient
-        self.m = self.m - gradient[0]
-        self.b = self.b - gradient[1]
-
-        return gradient.dot(gradient)
-
-
-class MultinomialLogisticRegression:
+class LogisticRegression:
     """Logistic Regression model that takes in an input matrix X, and classifies each row as one of a given number of
     classes
-
+    
     >For only one input and binary output, see BinaryLogisticRegression
-    >For multiple inputs and binary output, see MultipleBinaryLogisticRegression
     """
-
-    def __init__(self, weight_count, class_count, epsilon=0.0000001, min_gradient=0.03):
+    
+    def __init__(self, epsilon=0.0000001, min_gradient=0.015, optimizer=optimizers.Adagrad()):
         """Initializes the Regression Model.  It takes in a feature matrix, and predicts each input as 1 or 0
 
 
         Parameters
-
-        -weight_count: int.  Number of features in the dataset that will later be trained on
-
-        -class_count: int.  Number of possible classes that this model will be predicting for
 
         -epsilon: float.  Value added to S before square rooting it during the gradient application
         (Adagrad technique)
@@ -215,18 +63,22 @@ class MultinomialLogisticRegression:
         """
 
         # State Variables
-        self.weight_count = weight_count
-        self.var_count = weight_count + 1
-        self.class_count = class_count
-        self.w = np.zeros((class_count, self.var_count))
-        self.s = np.zeros((class_count, self.var_count))
+        self.weight_count = None
+        self.var_count = None
+        self.class_count = None
+        self.w = None
+        self.optimizer = optimizer
+        
         self.accuracy = 0
         self.loss = 0
+        
+        # Indicates if this model's inputs are scalars rather than vectors
+        self.is1D = False
 
         # Hyperparameters
         self.epsilon = epsilon
         self.min_gradient = min_gradient
-
+    
     def train(self, x, y, prints=True):
         """Trains the model to the given data by iterating gradient descent
 
@@ -240,36 +92,50 @@ class MultinomialLogisticRegression:
 
 		-prints: Boolean.  Dictates whether this model will print the results at the end of the training process
 		"""
-
+        
+        # Cast the input (any valid one-hot or class codes) into one-hot (This method is mostly input verification)
+        y = cast_to_one_hot(y)
+        
+        # Simple input verification
+        if len(x) == 0:
+            raise Exception('Input matrix X must have data points!  length of x: 0')
+        if len(x) != len(y):
+            raise Exception(f'X and Y must have an equal number of rows!  X:{len(x)}, Y:{len(y)}')
+        
+        self.__initialize_state(x, y)
+        
+        # Signal to the console that the training has started
         print('Beginning the training process..')
-
+        
+        # Initialize the variables that rely on feature and class counts
+        self.__initialize_state(x, y)
+        
         # Add a column of 1's to X
         x = np.column_stack(([1 for _ in range(len(x))], x))
-
+        
         while True:
+            
             # Predict a class for each input
             y_hat = self.predict_all(x)
-
+            
             # Record the magnitude of the gradient after applying it to the weights
             g = self.__update_weights(x, y, y_hat)
 
             if g <= self.min_gradient:
                 break
-
+        
         # Calculate the model's final accuracy and loss
         self.__calculate_accuracy(y, y_hat)
         self.__calculate_loss(y, y_hat)
-
+        
         # Print results
         if prints:
             print('\nTraining done!')
             print('Loss: %.3f' % self.loss)
             print(('Accuracy: %.2f' % (self.accuracy * 100)) + '%')
             print('Items in training data set:', len(y), '\n')
-
-        self.__print_detailed_accuracy(y, y_hat)
-
-    def evaluate(self, x, y, prints=True):
+    
+    def evaluate(self, x, y, prints=True, details=False):
         """Evaluates accuracy of the model
 
 
@@ -281,7 +147,26 @@ class MultinomialLogisticRegression:
 		This is the one-hot representation of the class of the data points in input X
 
 		-prints: Boolean.  Dictates whether this model will print the results at the end of the training process
+
+		-details: Boolean.  Dictates whether the confusion matrices will be printed at the end.  Default to False.
 		"""
+        
+        # Cast the y values to one-hot
+        y = cast_to_one_hot(y)
+
+        # Simple input verification
+        if len(x) == 0:
+            print('Input matrix X must have data points!  length of x: 0')
+            return
+        if len(y) != len(x):
+            print(f'X and Y must have an equal number of rows!  X:{len(x)}, Y:{len(y)}')
+            return
+        if hasattr(x[0], '__iter__') and len(x[0]) != self.weight_count:
+            print(f'X must have as many columns as the original training set!  X:{len(x)} Original:{self.weight_count}')
+            return
+        if len(y[0]) != self.class_count:
+            print(f'Y must have as many columns as the original training set!  Y:{len(y)} Original:{self.class_count}')
+            return
 
         # Add a column of 1's to X
         x = np.column_stack(([1 for _ in range(len(x))], x))
@@ -301,8 +186,9 @@ class MultinomialLogisticRegression:
             print(f'Items in evaluation data set:{len(y)}')
 
         # Print the confusion matrices
-        # self.__print_detailed_accuracy(y, y_hat)
-
+        if details:
+            self.__print_detailed_accuracy(y, y_hat)
+    
     def predict_all(self, x):
         """Assembles a prediction list from the given data set
 
@@ -341,7 +227,22 @@ class MultinomialLogisticRegression:
 
         # Return list of probabilities per class per input
         return normalized_y_hat
+    
+    def get_weights(self, do_round=True):
+        """Returns the weight matrix W of this model.  Each row is a class, and each column is a feature.  The first
+        column is the bias.
 
+        Parameters
+
+        -do_round: Dictates whether the values are rounded to the nearest whole number or not.  Default is True"""
+
+        # If rounded values is wanted
+        if do_round:
+            # Add 0.5 to each and return the floored version
+            return np.around(self.w)
+        # Assuming that didn't happen, return the true weights
+        return self.w
+    
     def __calculate_loss(self, y, y_hat):
         """Sums the log loss of each normalized guess (0/1)"""
 
@@ -364,7 +265,7 @@ class MultinomialLogisticRegression:
 
         # Store the total
         self.loss = -loss_total
-
+    
     def __calculate_accuracy(self, y, y_hat):
         """Counts the number of times that the final guess of the model matches the label"""
 
@@ -379,7 +280,7 @@ class MultinomialLogisticRegression:
 
         # Store the ratio of correct predictions to total data points
         self.accuracy = correct / len(y)
-
+    
     def __print_detailed_accuracy(self, y, y_hat):
         """Calculates then prints info like the confusion matrix, and other stats"""
 
@@ -432,7 +333,7 @@ class MultinomialLogisticRegression:
         # Display basic accuracy
         print(f'{total_true} true predictions, and {len(y) - total_true} false ones.  That is a rate of:')
         print('%.2f' % ((total_true / len(y))*100) + '%!')
-
+    
     def __update_weights(self, x, y, y_hat):
         """Runs one iteration of gradient descent by calculating the gradient, then applying it"""
 
@@ -455,14 +356,32 @@ class MultinomialLogisticRegression:
         # and ending with just a matrix of gradients
         gradient = np.sum(sum_inner, axis=0)
 
-        # Alter, then apply the gradient -------------------------------------------------------
-
-        # Add the square of the current gradient to self.S (Adagrad)
-        self.s += (gradient * gradient)
-        # Divide the gradient by self.S plus a small epsilon
-        gradient /= np.sqrt(self.s + self.epsilon)
-        # Apply the gradient to the model's weight matrix
-        self.w -= gradient
+        # Apply the gradient -------------------------------------------------------
+        self.optimizer.update(self.w, gradient)
 
         # Return the Magnitude of the gradient matrix so the train() method knows when to stop
         return np.sqrt(abs(np.sum(gradient * gradient)))
+    
+    def __initialize_state(self, x, y):
+        """Initializes state variables that rely on the number of features and classes"""
+        # Record the number of features / weights, and classes passed in with X and Y
+        
+        # Get around the error of len(x[0]) == 1 crashing because z[0] isn't iterable, to set length to 1 anyways
+        if not hasattr(x[0], '__iter__'):
+            weight_count = 1
+        else:
+            weight_count = len(x[0])
+        
+        # Set class count to the length of the first element of y (a one-hot encoding of class)
+        class_count = len(y[0])
+
+        # Initialize the state variables that require knowledge of these counts
+        self.weight_count = weight_count
+        self.var_count = weight_count + 1
+        self.class_count = class_count
+        self.w = np.zeros((class_count, self.var_count))
+        self.s = np.zeros((class_count, self.var_count))
+
+
+def build_from_json(json_obj):
+    pass
